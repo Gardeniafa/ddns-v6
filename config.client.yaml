@@ -1,0 +1,10 @@
+info:
+  name: a.us.gov
+
+server_config:
+  secret: 123123xxx
+  api: http://127.0.0.1:3210
+
+time_policy:
+  scan_time_seconds: 10
+  min_report_time_seconds: 500

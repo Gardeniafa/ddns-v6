@@ -1,0 +1,21 @@
+listening:
+  http_api:
+    host: 0.0.0.0
+    port: 3210
+  dns:
+    udp:
+      host: 0.0.0.0
+      port: 53
+    tcp:
+      host: 0.0.0.0
+      port: 53
+
+addresses:
+  - a.us.gov
+  - b.us.gov
+
+secret: 123123xxx
+
+record:
+  expire_time_seconds: 600
+  poll_period_seconds: 60
