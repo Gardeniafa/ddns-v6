@@ -1,5 +1,4 @@
 .idea/
-utils.py
 __pycache__/
 venv/
 client-old.py
