@@ -16,7 +16,7 @@ from utils import Utils
  
 
 class DNS_Server:
-    def __init__(self, config_path: str='./config.server.yaml') -> None:
+    def __init__(self, config_path: str) -> None:
         with open(config_path) as cfg:
             config = yaml.safe_load(cfg)
             self.__secret = config['secret']
@@ -29,8 +29,10 @@ class DNS_Server:
             self.__dns_udp_port = config['listening']['dns']['udp']['port']
             self.__expire_time = config['record']['expire_time_seconds']
             self.__poll_period = config['record']['poll_period_seconds']
-            self.__records = []
             self.__utils = Utils()
+            self.__records_min_ttl = None
+            self.__last_time_flush = None
+            self.__records = []
             self.__lock = threading.Lock()
 
     def sign(self, params: dict):
@@ -55,17 +57,24 @@ class DNS_Server:
                     raise ValueError('Not allowed')
                 identify = data.pop('identify')
                 if identify == self.sign(data):
+                    self.__lock.acquire()
                     for record in self.__records:
                         if record['name'] == data['name']:
                             self.__records.remove(record)
-                    self.__lock.acquire()
                     self.__records.append({
                         'name': data['name'],
                         'value': data['value'],
                         'type': {'A': A, 'AAAA': AAAA}[data['type']],
+                        'type_str': data['type'],
+                        'ttl': data['ttl'], 
                         'update_timestamp': self.__utils.current_timestamp(),
                         'update_time': self.__utils.current_time()
                     })
+                    if self.__records_min_ttl is None or data['ttl'] < self.__records_min_ttl:
+                        self.__records_min_ttl = data['ttl']
+                    if self.__last_time_flush is None:
+                        self.__last_time_flush = self.__utils.current_timestamp()
+                    print(f"[Info] {self.__records[-1]['update_time']}  Record update: {self.__records[-1]['name']}=={self.__records[-1]['value']}(type={self.__records[-1]['type_str']}, ttl={self.__records[-1]['ttl']})")
                     self.__lock.release()
                     status = '200 OK'
                     headers = [('Content-type', 'application/json')]
@@ -93,12 +102,13 @@ class DNS_Server:
 
     def dns_response(self, qname, qtype):
         qname = qname[:-1] if qname[-1] == '.' else qname
+        self.dns_record_flush()
         self.__lock.acquire()
         for record in self.__records:
             if record['name'] == qname and record['type'] == qtype:
-                print(f'   result for `{qname}` is `{record["value"]}`')
+                print(f'   result for `{qname}({record["type_str"]})` is `{record["value"]}`, ttl={record["ttl"]}')
                 self.__lock.release()
-                return record['value']
+                return record['ttl'], record['value']
         self.__lock.release()
         raise DNSException()
 
@@ -109,7 +119,8 @@ class DNS_Server:
         print(f'[Log] {self.__utils.current_time()}  host `{src_address}` standard query name `{qname}` with type `{qtype}`')
         response = dns.message.make_response(request)
         try:
-            rrs = dns.rrset.from_text(qname, 600, IN, qtype, self.dns_response(qname, qtype))
+            ttl, resp = self.dns_response(qname, qtype)
+            rrs = dns.rrset.from_text(qname, ttl, IN, qtype, resp)
         except DNSException:
             response.set_rcode(dns.rcode.NXDOMAIN)
             print(f'   [Error] {self.__utils.current_time()}  query name {qname}, type {qtype} not exist')
@@ -150,33 +161,33 @@ class DNS_Server:
                 client_socket.close()
 
     def dns_record_flush(self):
-        print(f'[Info] {self.__utils.current_time()}  DNS ttl flush service start...')
-        while True:
-            time.sleep(self.__poll_period)
-            print(f'[Info] {self.__utils.current_time()}  DNS ttl scan start...')
-            self.__lock.acquire()
-            for record in self.__records:
-                if self.__utils.seconds_to_now(record['update_timestamp']) > self.__expire_time:
-                    self.__records.remove(record)
-                    print(f'[Info] {self.__utils.current_time}  record {record} has been removed...')
+        self.__lock.acquire()
+        last_flush_to_now = self.__utils.seconds_to_now(self.__last_time_flush)
+        if last_flush_to_now < self.__records_min_ttl and last_flush_to_now < self.__poll_period:
             self.__lock.release()
+            return
+        print(f'[Info] {self.__utils.current_time()}  DNS ttl scan triggered...')
+        for record in self.__records:
+            record_update_to_now = self.__utils.seconds_to_now(record['update_timestamp'])
+            if record_update_to_now > record['ttl'] or record_update_to_now > self.__expire_time:
+                self.__records.remove(record)
+                print(f'[Info] {self.__utils.current_time()}  record {record} has been removed...')
+        self.__last_time_flush = self.__utils.current_timestamp()
+        self.__lock.release()
         
 
-def main():
+def main(config: str='./config.server.yaml'):
     try:
-        server = DNS_Server()
+        server = DNS_Server(config)
         http_add_api_thread = threading.Thread(target=server.add_api_server)
         dns_udp_server = threading.Thread(target=server.dns_udp_server)
         dns_tcp_server = threading.Thread(target=server.dns_tcp_server)
-        dns_record_flush = threading.Thread(target=server.dns_record_flush)
         http_add_api_thread.start()
         dns_udp_server.start()
         dns_tcp_server.start()
-        dns_record_flush.start()
         http_add_api_thread.join()
         dns_udp_server.join()
         dns_tcp_server.join()
-        dns_record_flush.join()
     except KeyboardInterrupt:
         pass
     except Exception as e:
@@ -186,4 +197,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main('./config.server-dev.yaml')

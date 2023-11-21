@@ -1,5 +1,6 @@
 info:
   name: a.us.gov
+  ttl_seconds: 30
 
 server_config:
   secret: 123123xxx

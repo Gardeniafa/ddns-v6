@@ -11,10 +11,11 @@ from utils import Utils
 
 
 class Client:
-    def __init__(self, config_path: str='./config.client.yaml') -> None:
+    def __init__(self, config_path: str) -> None:
         with open(config_path) as cfg:
             config = yaml.safe_load(cfg)
             self.__my_name = config['info']['name']
+            self.__ttl = config['info']['ttl_seconds']
             self.__secret = config['server_config']['secret']
             self.__api = config['server_config']['api']
             self.__scan_time_seconds = config['time_policy']['scan_time_seconds']
@@ -22,6 +23,8 @@ class Client:
             self.__v6_address = None
             self.__timer = self.__min_report_time_seconds
             self.__utils = Utils()
+            if self.__ttl <= self.__timer or self.__ttl <= self.__scan_time_seconds:
+                print(f"[Attention] {self.__utils.current_time()}  The report time gap should smaller than ttl.")
             self.update_v6_address()
             self.report()
 
@@ -60,6 +63,7 @@ class Client:
             'name': self.__my_name,
             'value': self.__v6_address,
             'type': 'AAAA',
+            'ttl': self.__ttl
         }
         try:
             dat['identify'] = self.sign(dat)
@@ -102,8 +106,8 @@ class Client:
         ensure_min_report_thread.join()
 
 
-if __name__ == '__main__':
-    client = Client()
+def main(config: str='./config.client.yaml'):
+    client = Client(config)
     try:
         client.run()
     except KeyboardInterrupt:
@@ -112,3 +116,7 @@ if __name__ == '__main__':
         print(f'[Fatal] error occurs, program exit with error:')
         print(e)
     print('[Program exit]')
+
+
+if __name__ == '__main__':
+    main('./config.client-dev.yaml')
