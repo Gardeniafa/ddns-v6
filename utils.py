@@ -24,7 +24,7 @@ class Utils:
 
 class Printer:
     def __init__(self, write_log: bool = False, log_sender: str = ''):
-        self.__log_name = (f'{datetime.datetime.now().strftime("%y-%m-%d %H:%M:%S")}'
+        self.__log_name = (f'{datetime.datetime.now().strftime("%y-%m-%d %H.%M.%S")}'
                            f'{f"({log_sender})" if log_sender else log_sender}.log')
         self.__write_log = write_log
 
