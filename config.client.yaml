@@ -9,3 +9,7 @@ server_config:
 time_policy:
   scan_time_seconds: 10
   min_report_time_seconds: 500
+
+functions:
+  log:
+    write_log_file: True

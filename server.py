@@ -10,15 +10,16 @@ from dns.rdataclass import IN
 from dns.exception import DNSException
 from wsgiref.simple_server import make_server
 from urllib.parse import parse_qs
-import time
 import yaml
 from utils import Utils
- 
+from utils import Printer
 
-class DNS_Server:
+
+class DNSServer:
     def __init__(self, config_path: str) -> None:
         with open(config_path) as cfg:
             config = yaml.safe_load(cfg)
+            print(config)
             self.__secret = config['secret']
             self.__allow_addresses = config['addresses']
             self.__listening_host = config['listening']['http_api']['host']
@@ -34,6 +35,8 @@ class DNS_Server:
             self.__last_time_flush = None
             self.__records = []
             self.__lock = threading.Lock()
+            self.__printer = Printer(config['functions']['log']['write_log_file'])
+            self.__print = self.__printer.print
 
     def sign(self, params: dict):
         new_params = params.copy()
@@ -42,12 +45,12 @@ class DNS_Server:
         param_str = '&'.join(f'{k}={v}' for k, v in sorted_params)
         md5 = hashlib.md5(param_str.encode()).hexdigest()
         return md5[::-1]
-    
+
     def add_api_handel(self, environ, start_response):
         try:
             method = environ['REQUEST_METHOD']
             path = environ['PATH_INFO']
-            if method == 'POST' and path == '/': 
+            if method == 'POST' and path == '/':
                 content_length = int(environ['CONTENT_LENGTH'])
                 post_data = environ['wsgi.input'].read(content_length)
                 data = parse_qs(post_data.decode())
@@ -66,7 +69,7 @@ class DNS_Server:
                         'value': data['value'],
                         'type': {'A': A, 'AAAA': AAAA}[data['type']],
                         'type_str': data['type'],
-                        'ttl': data['ttl'], 
+                        'ttl': data['ttl'],
                         'update_timestamp': self.__utils.current_timestamp(),
                         'update_time': self.__utils.current_time()
                     })
@@ -74,7 +77,10 @@ class DNS_Server:
                         self.__records_min_ttl = data['ttl']
                     if self.__last_time_flush is None:
                         self.__last_time_flush = self.__utils.current_timestamp()
-                    print(f"[Info] {self.__records[-1]['update_time']}  Record update: {self.__records[-1]['name']}=={self.__records[-1]['value']}(type={self.__records[-1]['type_str']}, ttl={self.__records[-1]['ttl']})")
+                    self.__print(
+                        f"[Info] {self.__records[-1]['update_time']}  Record update: {self.__records[-1]['name']}=="
+                        f"{self.__records[-1]['value']}(type={self.__records[-1]['type_str']}, "
+                        f"ttl={self.__records[-1]['ttl']})")
                     self.__lock.release()
                     status = '200 OK'
                     headers = [('Content-type', 'application/json')]
@@ -92,11 +98,13 @@ class DNS_Server:
             response_data = {
                 "code": 404,
                 "message": "Not Found"
-            } 
+            }
             return [json.dumps(response_data).encode()]
-        
+
     def add_api_server(self):
-        print(f'[Info] {self.__utils.current_time()}  Add record api server start at `{self.__listening_host}:{self.__listening_port}`')
+        self.__print(
+            f'[Info] {self.__utils.current_time()}  Add record api server start at `{self.__listening_host}:'
+            f'{self.__listening_port}`')
         httpd = make_server(self.__listening_host, int(self.__listening_port), self.add_api_handel)
         httpd.serve_forever()
 
@@ -106,7 +114,8 @@ class DNS_Server:
         self.__lock.acquire()
         for record in self.__records:
             if record['name'] == qname and record['type'] == qtype:
-                print(f'   result for `{qname}({record["type_str"]})` is `{record["value"]}`, ttl={record["ttl"]}')
+                self.__print(f'   result for `{qname}({record["type_str"]})` is `{record["value"]}`, '
+                             f'ttl={record["ttl"]}')
                 self.__lock.release()
                 return record['ttl'], record['value']
         self.__lock.release()
@@ -116,45 +125,51 @@ class DNS_Server:
         q = request.question[0]
         qname = q.name.to_text()
         qtype = q.rdtype
-        print(f'[Log] {self.__utils.current_time()}  host `{src_address}` standard query name `{qname}` with type `{qtype}`')
+        self.__print(
+            f'[Log] {self.__utils.current_time()}  host `{src_address}` standard query name `{qname}` '
+            f'with type `{qtype}`')
         response = dns.message.make_response(request)
         try:
             ttl, resp = self.dns_response(qname, qtype)
             rrs = dns.rrset.from_text(qname, ttl, IN, qtype, resp)
         except DNSException:
             response.set_rcode(dns.rcode.NXDOMAIN)
-            print(f'   [Error] {self.__utils.current_time()}  query name {qname}, type {qtype} not exist')
+            self.__print(f'   [Error] {self.__utils.current_time()}  query name {qname}, type {qtype} not exist')
         else:
             response.answer.append(rrs)
         finally:
             return response
 
     def dns_udp_server(self):
-        print(f'[Info] {self.__utils.current_time()}  DNS UDP server start at `{self.__dns_udp_host}:{self.__dns_udp_port}`')
+        self.__print(
+            f'[Info] {self.__utils.current_time()}  DNS UDP server start at '
+            f'`{self.__dns_udp_host}:{self.__dns_udp_port}`')
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind((self.__dns_udp_host, self.__dns_udp_port))
         while True:
-            request, *_, address, = dns.query.receive_udp(sock)
             try:
+                request, *_, address, = dns.query.receive_udp(sock)
                 response = self.handle_dns_query(request, address)
             except Exception as ex:
-                print(ex)
+                self.__print(ex)
             else:
                 dns.query.send_udp(sock, response, address)
 
     def dns_tcp_server(self):
-        print(f'[Info] {self.__utils.current_time()}  DNS TCP server start at `{self.__dns_tcp_host}:{self.__dns_tcp_port}`')
+        self.__print(
+            f'[Info] {self.__utils.current_time()}  DNS TCP server start at '
+            f'`{self.__dns_tcp_host}:{self.__dns_tcp_port}`')
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.bind((self.__dns_tcp_host, self.__dns_tcp_port))
         sock.listen(5)
         while True:
             client_socket, address = sock.accept()
             data = client_socket.recv(512)
-            request = dns.message.from_wire(data)
             try:
+                request = dns.message.from_wire(data)
                 response = self.handle_dns_query(request, address)
             except Exception as e:
-                print(e)
+                self.__print(e)
             else:
                 client_socket.send(response.to_wire())
             finally:
@@ -166,19 +181,19 @@ class DNS_Server:
         if last_flush_to_now < self.__records_min_ttl and last_flush_to_now < self.__poll_period:
             self.__lock.release()
             return
-        print(f'[Info] {self.__utils.current_time()}  DNS ttl scan triggered...')
+        self.__print(f'[Info] {self.__utils.current_time()}  DNS ttl scan triggered...')
         for record in self.__records:
             record_update_to_now = self.__utils.seconds_to_now(record['update_timestamp'])
             if record_update_to_now > record['ttl'] or record_update_to_now > self.__expire_time:
                 self.__records.remove(record)
-                print(f'[Info] {self.__utils.current_time()}  record {record} has been removed...')
+                self.__print(f'[Info] {self.__utils.current_time()}  record {record} has been removed...')
         self.__last_time_flush = self.__utils.current_timestamp()
         self.__lock.release()
-        
 
-def main(config: str='./config.server.yaml'):
+
+def main(config: str = './config.server.yaml'):
     try:
-        server = DNS_Server(config)
+        server = DNSServer(config)
         http_add_api_thread = threading.Thread(target=server.add_api_server)
         dns_udp_server = threading.Thread(target=server.dns_udp_server)
         dns_tcp_server = threading.Thread(target=server.dns_tcp_server)
@@ -197,4 +212,4 @@ def main(config: str='./config.server.yaml'):
 
 
 if __name__ == '__main__':
-    main('./config.server-dev.yaml')
+    main()

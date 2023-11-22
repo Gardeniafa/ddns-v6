@@ -8,12 +8,14 @@ import yaml
 import os
 import threading
 from utils import Utils
+from utils import Printer
 
 
 class Client:
     def __init__(self, config_path: str) -> None:
         with open(config_path) as cfg:
             config = yaml.safe_load(cfg)
+            print(config)
             self.__my_name = config['info']['name']
             self.__ttl = config['info']['ttl_seconds']
             self.__secret = config['server_config']['secret']
@@ -23,8 +25,10 @@ class Client:
             self.__v6_address = None
             self.__timer = self.__min_report_time_seconds
             self.__utils = Utils()
+            self.__printer = Printer(config['functions']['log']['write_log_file'], log_sender='client')
+            self.__print = self.__printer.print
             if self.__ttl <= self.__timer or self.__ttl <= self.__scan_time_seconds:
-                print(f"[Attention] {self.__utils.current_time()}  The report time gap should smaller than ttl.")
+                self.__print(f"[Attention] {self.__utils.current_time()}  The report time gap should smaller than ttl.")
             self.update_v6_address()
             self.report()
 
@@ -33,11 +37,11 @@ class Client:
         ipv6_pattern = (r'(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,'
                         r'6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,'
                         r'4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,'
-                        r'4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{'
-                        r'1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,'
-                        r'1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|(['
-                        r'0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,'
-                        r'1}[0-9]){0,1}[0-9]))')
+                        r'4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]'
+                        r'{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,'
+                        r'1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|'
+                        r'([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|'
+                        r'1{0,1}[0-9]){0,1}[0-9]))')
         ipv6_addresses = re.findall(ipv6_pattern, output)
         result = [address[0] for address in ipv6_addresses]
         nl = []
@@ -57,7 +61,7 @@ class Client:
         param_str = '&'.join(f'{k}={v}' for k, v in sorted_params)
         md5 = hashlib.md5(param_str.encode()).hexdigest()
         return md5[::-1]
-    
+
     def report(self):
         dat = {
             'name': self.__my_name,
@@ -70,29 +74,30 @@ class Client:
             response = requests.post(self.__api, json=dat, timeout=2)
             res = json.loads(response.text)
             if res['code'] != 200:
-                raise ValueError(f'[Error] {self.__utils.current_time()}  Return code f{res["code"]} with message: {res["message"]}')
+                raise ValueError(
+                    f'[Error] {self.__utils.current_time()}  Return code {res["code"]} with message: {res["message"]}')
         except Exception as e:
-            print(e)
+            self.__print(e)
         else:
             self.__timer = self.__min_report_time_seconds
 
     def check_v6_address_change(self):
-        print(f'[Info] {self.__utils.current_time()}  address listener start...')
+        self.__print(f'[Info] {self.__utils.current_time()}  address listener start...')
         while True:
             time.sleep(self.__scan_time_seconds)
             previous_add = self.__v6_address
             self.update_v6_address()
             if previous_add != self.__v6_address:
-                print(f'[Info] {self.__utils.current_time()}  Detect IPv6 address changed, report it')
-                print(f'        From `{previous_add}` to `{self.__v6_address}`')
+                self.__print(f'[Info] {self.__utils.current_time()}  Detect IPv6 address changed, report it')
+                self.__print(f'        From `{previous_add}` to `{self.__v6_address}`')
                 self.report()
-    
+
     def ensure_min_report(self):
-        print(f'[Info] {self.__utils.current_time()}  report keeper start...')
+        self.__print(f'[Info] {self.__utils.current_time()}  report keeper start...')
         while True:
             time.sleep(1)
             if self.__timer <= 0:
-                print(f'[Info] {self.__utils.current_time()}  The max report gap touch, force to report...')
+                self.__print(f'[Info] {self.__utils.current_time()}  The max report gap touch, force to report...')
                 self.report()
             else:
                 self.__timer += -1
@@ -106,7 +111,7 @@ class Client:
         ensure_min_report_thread.join()
 
 
-def main(config: str='./config.client.yaml'):
+def main(config: str = './config.client.yaml'):
     client = Client(config)
     try:
         client.run()
@@ -119,4 +124,4 @@ def main(config: str='./config.client.yaml'):
 
 
 if __name__ == '__main__':
-    main('./config.client-dev.yaml')
+    main()

@@ -19,3 +19,7 @@ secret: 123123xxx
 record:
   expire_time_seconds: 600
   poll_period_seconds: 60
+
+functions:
+  log:
+    write_log_file: True

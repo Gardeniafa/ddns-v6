@@ -1,8 +1,0 @@
-.idea/
-__pycache__/
-venv/
-client-old.py
-server-old.py
-config.client-dev.yaml
-config.server-dev.yaml
-dev.py
