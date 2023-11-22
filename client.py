@@ -33,7 +33,8 @@ class Client:
             self.report()
 
     def update_v6_address(self):
-        output = subprocess.check_output('ipconfig' if os.name == 'nt' else 'ifconfig', shell=True).decode('utf-8')
+        output = subprocess.check_output('ipconfig' if os.name == 'nt' else 'ifconfig',
+                                         shell=True).decode('gbk' if os.name == 'nt' else 'utf-8')
         ipv6_pattern = (r'(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,'
                         r'6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,'
                         r'4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,'

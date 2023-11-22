@@ -35,7 +35,7 @@ class DNSServer:
             self.__last_time_flush = None
             self.__records = []
             self.__lock = threading.Lock()
-            self.__printer = Printer(config['functions']['log']['write_log_file'])
+            self.__printer = Printer(config['functions']['log']['write_log_file'], log_sender='server')
             self.__print = self.__printer.print
 
     def sign(self, params: dict):
