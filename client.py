@@ -15,7 +15,6 @@ class Client:
     def __init__(self, config_path: str) -> None:
         with open(config_path) as cfg:
             config = yaml.safe_load(cfg)
-            print(config)
             self.__my_name = config['info']['name']
             self.__ttl = config['info']['ttl_seconds']
             self.__secret = config['server_config']['secret']

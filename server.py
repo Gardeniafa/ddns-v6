@@ -19,7 +19,6 @@ class DNSServer:
     def __init__(self, config_path: str) -> None:
         with open(config_path) as cfg:
             config = yaml.safe_load(cfg)
-            print(config)
             self.__secret = config['secret']
             self.__allow_addresses = config['addresses']
             self.__listening_host = config['listening']['http_api']['host']
