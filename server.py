@@ -60,6 +60,8 @@ class DNSServer:
                 for record in self.__records:
                     if record['name'] == data['name']:
                         if data['timestamp'] <= record['update_timestamp']:
+                            self.__print(f"[Warning] {self.__utils.current_time()}  "
+                                         f"Timestamp error, maybe replay attack")
                             raise ValueError('Timestamp error')
                 identify = data.pop('identify')
                 if identify == self.sign(data):
@@ -189,7 +191,7 @@ class DNSServer:
             self.__lock.release()
             return
         self.__print(f'[Info] {self.__utils.current_time()}  DNS ttl scan triggered...')
-        min_ttl = self.__records[0]['ttls']
+        min_ttl = self.__records[0]['ttl']
         for record in self.__records:
             record_update_to_now = self.__utils.seconds_to_now(record['update_timestamp'])
             if record_update_to_now > record['ttl'] or record_update_to_now > self.__expire_time:
