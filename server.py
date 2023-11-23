@@ -183,7 +183,7 @@ class DNSServer:
 
     def dns_record_flush(self):
         self.__lock.acquire()
-        if self.__records_min_ttl is None or self.__last_time_flush is None:
+        if self.__records_min_ttl is None or self.__last_time_flush is None or self.__records == []:
             self.__lock.release()
             return
         last_flush_to_now = self.__utils.seconds_to_now(self.__last_time_flush)
