@@ -57,6 +57,10 @@ class DNSServer:
                     data = json.loads(post_data)
                 if data['name'] not in self.__allow_addresses:
                     raise ValueError('Not allowed')
+                for record in self.__records:
+                    if record['name'] == data['name']:
+                        if data['timestamp'] <= record['update_timestamp']:
+                            raise ValueError('Timestamp error')
                 identify = data.pop('identify')
                 if identify == self.sign(data):
                     self.__lock.acquire()
@@ -69,7 +73,7 @@ class DNSServer:
                         'type': {'A': A, 'AAAA': AAAA}[data['type']],
                         'type_str': data['type'],
                         'ttl': data['ttl'],
-                        'update_timestamp': self.__utils.current_timestamp(),
+                        'update_timestamp': data['timestamp'],
                         'update_time': self.__utils.current_time()
                     })
                     if self.__records_min_ttl is None or data['ttl'] < self.__records_min_ttl:
@@ -89,8 +93,9 @@ class DNSServer:
                         "message": "success"
                     }
                     return [json.dumps(response_data).encode()]
-            raise
-        except Exception as _:
+            raise ValueError('Not allowed method or path')
+        except Exception as ex:
+            self.__print(f"[Error] http api error {self.__utils.current_time()}  {ex}")
             status = '404 Not Found'
             headers = [('Content-type', 'application/json')]
             start_response(status, headers)
@@ -176,16 +181,26 @@ class DNSServer:
 
     def dns_record_flush(self):
         self.__lock.acquire()
+        if self.__records_min_ttl is None or self.__last_time_flush is None:
+            self.__lock.acquire()
+            return
         last_flush_to_now = self.__utils.seconds_to_now(self.__last_time_flush)
         if last_flush_to_now < self.__records_min_ttl and last_flush_to_now < self.__poll_period:
             self.__lock.release()
             return
         self.__print(f'[Info] {self.__utils.current_time()}  DNS ttl scan triggered...')
+        min_ttl = self.__records[0]['ttls']
         for record in self.__records:
             record_update_to_now = self.__utils.seconds_to_now(record['update_timestamp'])
             if record_update_to_now > record['ttl'] or record_update_to_now > self.__expire_time:
                 self.__records.remove(record)
                 self.__print(f'[Info] {self.__utils.current_time()}  record {record} has been removed...')
+            else:
+                if record['ttl'] < min_ttl:
+                    min_ttl = record['ttl']
+        if self.__records_min_ttl != min_ttl:
+            self.__records_min_ttl = min_ttl
+            self.__print(f"[Info] {self.__utils.current_time()}  min ttl update to {min_ttl}")
         self.__last_time_flush = self.__utils.current_timestamp()
         self.__lock.release()
 

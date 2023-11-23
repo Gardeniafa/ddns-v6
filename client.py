@@ -67,7 +67,8 @@ class Client:
             'name': self.__my_name,
             'value': self.__v6_address,
             'type': 'AAAA',
-            'ttl': self.__ttl
+            'ttl': self.__ttl,
+            'timestamp': self.__utils.current_time()
         }
         try:
             dat['identify'] = self.sign(dat)
