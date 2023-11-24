@@ -22,4 +22,10 @@ record:
 
 functions:
   log:
-    write_log_file: True
+    write_log_file: yes
+  dns:
+    client_rules:
+      blacklist:
+        - 127.0.0.1
+        - 192.168.0.0/16
+        - 10.0.0.0/255.0.0.0

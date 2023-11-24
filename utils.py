@@ -1,6 +1,7 @@
 import time
 import builtins
 import datetime
+import ipaddress
 
 
 class Utils:
@@ -20,6 +21,18 @@ class Utils:
     @staticmethod
     def current_time():
         return time.strftime("%Y/%m/%d %H:%M:%S", time.localtime())
+
+    @staticmethod
+    def ip_compare(target, rule):
+        if '/' in rule:
+            ip, mask = rule.split('/')
+            if '.' in mask:
+                mask = ipaddress.IPv4Network('0.0.0.0/' + mask).prefixlen
+            network = ipaddress.ip_network(f'{ip}/{mask}', strict=False)
+            target = ipaddress.ip_address(target)
+            return target in network
+        else:
+            return target == rule
 
 
 class Printer:

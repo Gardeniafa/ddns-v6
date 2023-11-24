@@ -29,6 +29,7 @@ class DNSServer:
             self.__dns_udp_port = config['listening']['dns']['udp']['port']
             self.__expire_time = config['record']['expire_time_seconds']
             self.__poll_period = config['record']['poll_period_seconds']
+            self.__dns_query_client_blacklist = config['functions']['dns']['client_rules']['blacklist']
             self.__utils = Utils()
             self.__records_min_ttl = None
             self.__last_time_flush = None
@@ -155,6 +156,16 @@ class DNSServer:
         while True:
             try:
                 request, *_, address, = dns.query.receive_udp(sock)
+                flag = True
+                for blacklist_item in self.__dns_query_client_blacklist:
+                    if self.__utils.ip_compare(address[0], blacklist_item):
+                        # self.__print(f'[Warning] {self.__utils.current_time()}  '
+                        #              f'Client `{address}` in blacklist, drop it')
+                        break
+                else:
+                    flag = False
+                if flag:
+                    continue
                 response = self.handle_dns_query(request, address)
             except Exception as ex:
                 self.__print(ex)
@@ -170,6 +181,17 @@ class DNSServer:
         sock.listen(5)
         while True:
             client_socket, address = sock.accept()
+            flag = True
+            for blacklist_item in self.__dns_query_client_blacklist:
+                if self.__utils.ip_compare(address[0], blacklist_item):
+                    # self.__print(f'[Warning] {self.__utils.current_time()}  '
+                    #              f'Client `{address}` in blacklist, drop it')
+                    client_socket.close()
+                    break
+            else:
+                flag = False
+            if flag:
+                continue
             data = client_socket.recv(512)
             try:
                 request = dns.message.from_wire(data)
@@ -183,7 +205,11 @@ class DNSServer:
 
     def dns_record_flush(self):
         self.__lock.acquire()
-        if self.__records_min_ttl is None or self.__last_time_flush is None or self.__records == []:
+        if self.__records_min_ttl is None or self.__last_time_flush is None:
+            self.__lock.release()
+            return
+        if not self.__records:
+            self.__records_min_ttl, self.__last_time_flush = None, None
             self.__lock.release()
             return
         last_flush_to_now = self.__utils.seconds_to_now(self.__last_time_flush)
