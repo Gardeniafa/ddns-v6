@@ -28,10 +28,10 @@ class Client:
             self.__print = self.__printer.print
             if self.__ttl <= self.__timer or self.__ttl <= self.__scan_time_seconds:
                 self.__print(f"[Attention] {self.__utils.current_time()}  The report time gap should smaller than ttl.")
-            self.update_v6_address()
-            self.report()
+            self.__update_v6_address()
+            self.__report()
 
-    def update_v6_address(self):
+    def __update_v6_address(self):
         output = subprocess.check_output('ipconfig' if os.name == 'nt' else 'ifconfig',
                                          shell=True).decode('gbk' if os.name == 'nt' else 'utf-8')
         ipv6_pattern = (r'(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,'
@@ -54,7 +54,7 @@ class Client:
                 res = i
         self.__v6_address = res
 
-    def sign(self, params: dict):
+    def __sign(self, params: dict):
         new_params = params.copy()
         new_params['secret'] = self.__secret
         sorted_params = sorted(new_params.items())
@@ -62,7 +62,7 @@ class Client:
         md5 = hashlib.md5(param_str.encode()).hexdigest()
         return md5[::-1]
 
-    def report(self):
+    def __report(self):
         dat = {
             'name': self.__my_name,
             'value': self.__v6_address,
@@ -71,7 +71,7 @@ class Client:
             'timestamp': self.__utils.current_timestamp()
         }
         try:
-            dat['identify'] = self.sign(dat)
+            dat['identify'] = self.__sign(dat)
             response = requests.post(self.__api, json=dat, timeout=2)
             res = json.loads(response.text)
             if res['code'] != 200:
@@ -82,47 +82,50 @@ class Client:
         else:
             self.__timer = self.__min_report_time_seconds
 
-    def check_v6_address_change(self):
+    def __check_v6_address_change(self):
         self.__print(f'[Info] {self.__utils.current_time()}  address listener start...')
         while True:
             time.sleep(self.__scan_time_seconds)
             previous_add = self.__v6_address
-            self.update_v6_address()
-            if previous_add != self.__v6_address:
-                self.__print(f'[Info] {self.__utils.current_time()}  Detect IPv6 address changed, report it')
-                self.__print(f'        From `{previous_add}` to `{self.__v6_address}`')
-                self.report()
+            try:
+                self.__update_v6_address()
+                if previous_add != self.__v6_address:
+                    self.__print(f'[Info] {self.__utils.current_time()}  Detect IPv6 address changed, report it')
+                    self.__print(f'        From `{previous_add}` to `{self.__v6_address}`')
+                    self.__report()
+            except Exception as e:
+                self.__print(f'[Error] {self.__utils.current_time()}  Error occurs when detect address change:')
+                self.__print(e)
 
-    def ensure_min_report(self):
+    def __ensure_min_report(self):
         self.__print(f'[Info] {self.__utils.current_time()}  report keeper start...')
         while True:
             time.sleep(1)
             if self.__timer <= 0:
                 self.__print(f'[Info] {self.__utils.current_time()}  The max report gap touch, force to report...')
-                self.report()
+                self.__report()
             else:
                 self.__timer += -1
 
-    def run(self):
-        check_v6_change_thread = threading.Thread(target=self.check_v6_address_change)
-        ensure_min_report_thread = threading.Thread(target=self.ensure_min_report)
+    def __run(self):
+        check_v6_change_thread = threading.Thread(target=self.__check_v6_address_change)
+        ensure_min_report_thread = threading.Thread(target=self.__ensure_min_report)
         check_v6_change_thread.start()
         ensure_min_report_thread.start()
         check_v6_change_thread.join()
         ensure_min_report_thread.join()
 
-
-def main(config: str = './config.client.yaml'):
-    client = Client(config)
-    try:
-        client.run()
-    except KeyboardInterrupt:
-        pass
-    except Exception as e:
-        print(f'[Fatal] error occurs, program exit with error:')
-        print(e)
-    print('[Program exit]')
+    def main(self):
+        try:
+            self.__run()
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            self.__print(f'[Fatal] error occurs, program exit with error:')
+            self.__print(e)
+            exit(1)
+        print('[Program exit]')
 
 
 if __name__ == '__main__':
-    main()
+    Client('./config.client.yaml').main()
