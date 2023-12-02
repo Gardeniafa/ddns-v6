@@ -32,27 +32,32 @@ class Client:
             self.__report()
 
     def __update_v6_address(self):
-        output = subprocess.check_output('ipconfig' if os.name == 'nt' else 'ifconfig',
-                                         shell=True).decode('gbk' if os.name == 'nt' else 'utf-8')
-        ipv6_pattern = (r'(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,'
-                        r'6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,'
-                        r'4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,'
-                        r'4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]'
-                        r'{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,'
-                        r'1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|'
-                        r'([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|'
-                        r'1{0,1}[0-9]){0,1}[0-9]))')
-        ipv6_addresses = re.findall(ipv6_pattern, output)
-        result = [address[0] for address in ipv6_addresses]
-        nl = []
-        for i in result:
-            if len(i) > 20:
-                nl.append(i)
-        res = nl[0]
-        for i in nl:
-            if len(res) > len(i):
-                res = i
-        self.__v6_address = res
+        try:
+            output = subprocess.check_output('ipconfig' if os.name == 'nt' else 'ifconfig',
+                                             shell=True).decode('gbk' if os.name == 'nt' else 'utf-8')
+            ipv6_pattern = (
+                r'(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,'
+                r'6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,'
+                r'4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,'
+                r'4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]'
+                r'{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,'
+                r'1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|'
+                r'([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|'
+                r'1{0,1}[0-9]){0,1}[0-9]))')
+            ipv6_addresses = re.findall(ipv6_pattern, output)
+            result = [address[0] for address in ipv6_addresses]
+            nl = []
+            for i in result:
+                if len(i) > 20:
+                    nl.append(i)
+            res = nl[0]
+            for i in nl:
+                if len(res) > len(i):
+                    res = i
+            self.__v6_address = res
+        except Exception as e:
+            self.__print(f'[Error] {self.__utils.current_time()}  Error occurs when update v6 address: {e}')
+            self.__v6_address = None
 
     def __sign(self, params: dict):
         new_params = params.copy()
@@ -63,6 +68,9 @@ class Client:
         return md5[::-1]
 
     def __report(self):
+        if self.__v6_address is None:
+            self.__print(f'[Error] {self.__utils.current_time()}  No IPv6 address detected, report failed')
+            return
         dat = {
             'name': self.__my_name,
             'value': self.__v6_address,
